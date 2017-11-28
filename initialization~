@@ -1,0 +1,3 @@
+sh1 python ServiceHost.py
+sh6 python ServiceHost.py
+sh8 python ServiceHost.py

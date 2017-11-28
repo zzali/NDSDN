@@ -1,0 +1,35 @@
+on both client and server:
+#sudo apt-get install git-core
+
+on local machine: (use pubkey of this step in next steps)
+#ssh-keygen -t rsa  (key.pub)
+
+on server:
+#userdd git
+#passwd git
+#mkdir /home/git
+#chown -R git /home/git
+
+
+on client:
+#cat ~/.ssh/key.pub | ssh git@remote-server "mkdir -p ~/.ssh && cat >>  ~/.ssh/authorized_keys"
+
+on server root:
+#sudo mkdir -p /home/git/vicn
+#cd /home/git/vicn
+#sudo git init --bare
+#sudo chown -R git /home/git/
+
+
+on client:
+#sudo mkdir -p /home/git/vicn.git
+#sudo git init
+copy project files to /home/git/vicn.git
+#git add .
+#git config --global user.name "name"
+#git config --global user.email "email"
+put any sentence u want instead of message
+#git commit -m "message" -a
+#git remote add origin git@192.168.2.240:/home/git/vicn.git
+#git push -u origin master
+
