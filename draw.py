@@ -280,12 +280,12 @@ if __name__ == '__main__':
     host_ids = options.host_id.split(',')
 #    out_path=options.outpath if options.outpath else OUTPATH
 #    plot_RT(options.protocol, host_ids ,out_path)
-#    plot_hop(options.protocol, host_ids, out_path)
+    plot_hop(options.protocol, host_ids, out_path)
     plot_controller_rate('./Out/icn/')
     
     plot_RT_topo(host_ids,'./Out/')
     #plot_SH_rate(out_path)
-    plot_delay('./Out/', host_ids[0])
+    
     
 
 
