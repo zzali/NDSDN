@@ -3,6 +3,8 @@ Implementing NDN using SDN
 
 The required steps for executing a sample experiment are described at the following.
 
+0- install mininet and Ryu controller and download NDSDN source files. Extract the folder and cd to the base folder.
+
 1- execute controller (the customized module is written in VICN.py)
    -sudo ryu-manager --ofp-tcp-listen-port 9999 VICN.py  ryu.app.ofctl_rest --observe-links
 
