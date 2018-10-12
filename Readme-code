@@ -1,0 +1,35 @@
+#summary of the main files
+
+gen_requests.py: generate request files for the consumers
+
+---------------------------------------------
+
+topology.py: topology of the emulated net
+
+-----------------------------------------
+VICN.py: the main controller module which the ICN protocols are implemented in. 
+
+-----------------------------------------
+ServiceHost.py: 
+    the PIT and cache module
+    should be executed on the hosts connected to the swtches.
+-----------------------------------------
+consumer.py:   python3 consumer.py -i $host-id -e $experiment (icn, noicn) > $log_path
+
+	generating interests and retriving data.
+    should be executed on the hosts
+    For each consumer there are two files: <request> and <times> in <Requests> folder which are identified by its id.
+    the requested contents are in <request> which are requested in the time intervals determined in <times>
+      
+
+-----------------------------------------
+producer.py:   python3 producer.py -p $content_files_path -r $file_name_of_published_contents  > $log_path
+	
+	publishing content files which are located in the <content_files_path> folder. Name of the published files are specified in <file_name_of_published_contents>
+    should be executed on the hosts
+
+-----------------------------------------
+results.py:
+
+-----------------------------------------
+draw.py
