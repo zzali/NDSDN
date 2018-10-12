@@ -9,11 +9,11 @@ The required steps for executing a sample experiment are described at the follow
 2- execute mininet    (the customized topology is determind in VICN.py)
    -sudo mn --custom topology.py --controller=remote,port=9999 --switch=ovsk,protocols=OpenFlow14 --topo mytopo --mac --arp --link=tc,bw=1,delay=10ms
 
-3- execute the experiment from the mininet terminal (experiment is the commands for executing codes on variouse terminals)
+3- execute the experiment from the mininet terminal (experiment is the commands for executing codes on variouse terminals, now there are three sample experiment files: experiment, experiment_delay, experiment_delay_noicn, the last one executes a network that works according to IP without ICN tables to enable us comparing NDSDN with a simple SDN network)
    -source experiment
 
-	(at the controller terminal, we can see logs about the net topology and executed codes, then comming packets to each switch or the registration commands)
-    (contenets are in <content_files> folder. producer.py use them)
+at the controller terminal, we can see logs about the net topology and executed codes, then comming packets to each switch or the registration commands
+contenets are in <content_files> folder. producer.py use them
 	
 4- logs from the experiment are recorded in the files in <Out> folder
    -using draw.py, you can see the diagrams
