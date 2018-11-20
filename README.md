@@ -34,7 +34,9 @@ The required steps for executing a sample experiment are described at the follow
 6- the log files from the experiment are recorded in some files in the <Out> folder in related folders accrding to protocol_name and the delay configuration and sample number.
 
 7- During the execution of each experiment you can see the flow tables in the switches by executing:
+
    -sudo ovs-ofctl -O OpenFlow14  dump-tables s1
+
    -sudo ovs-ofctl -O OpenFlow14  dump-flows s1
 
 8- using draw.py, you can see the diagrams:
@@ -43,8 +45,11 @@ The required steps for executing a sample experiment are described at the follow
    Ex.: ./python draw.py -i 1,2 -e ds50ms_dsh1ms -s 20
    
    Given arguments are defined as:
+
    i- consumer_ids: id number of the consumers
+
    e- experiment_name: It is the folder name of the experiment output in ./Out according to delay configuration  
+
    s- sample_num: The average diagram is computed from this sample number 
 
 
