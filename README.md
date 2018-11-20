@@ -22,9 +22,13 @@ The required steps for executing a sample experiment are described at the follow
        ./execute_experiment.sh noicn 1ms 50ms 20 
    
    Given arguments are defined as:
+
    a- protocol_name: it can be icn or noicn. If protocol is ICN, network routing, forwarding and caching is performed according to ICN. But if protocol is noicn, no ICN related protocol applied and the requests are replied according to plain IP.
+
    b- serviceHost2switch_delay: The delay between each switch and its service host. It is assumed to be less than switche2switch_delay
+
    c- switche2switch_delay: The delay between each two switches
+
    d- sample_num: The number of repeated execution of the experimnet. 
 
 6- the log files from the experiment are recorded in some files in the <Out> folder in related folders accrding to protocol_name and the delay configuration and sample number.
