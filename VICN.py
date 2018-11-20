@@ -30,11 +30,16 @@ from registration import Registration
 from ryu.ofproto import ofproto_v1_4
 import threading
 import time
-
+from ryu import cfg
 
 
 SH_IN_PORT = 100
 SH_OUT_PORT = 101
+CONF = cfg.CONF
+
+CONF.register_opt(cfg.StrOpt('exp', default='ds100ms__dsh_1ms', help = 'The experiment by the parameters'),'netparam') 
+CONF.register_opt(cfg.StrOpt('protocol', default='icn', help = 'The protocol to use'),'netparam') 
+CONF.register_opt(cfg.StrOpt('smpl', default='1', help = 'sample requests group'),'netparam') 
 
 class ICSDNController(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_4.OFP_VERSION]
@@ -72,6 +77,13 @@ class ICSDNController(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(ICSDNController, self).__init__(*args, **kwargs)
+        
+#        CONF = cfg.CONF
+#        CONF.register_opts([
+#            cfg.StrOpt('experimnet', default='ds100ms__dsh_1ms', help = ('The experiment by the parameters'))], group='NETPARAM')
+        print (CONF.netparam.exp)
+        self.log_file='./Out/' + CONF.netparam.protocol +  '/' + CONF.netparam.exp + '/' + CONF.netparam.smpl + '/controller_log'
+                
         self.switches = []
         self.links = []
         self.mac_to_port = {}
@@ -103,14 +115,14 @@ class ICSDNController(app_manager.RyuApp):
 
     def packet_in_rate(self):
         T = float(10)
-        f = open('./Out/icn/controller_log','w')
+        f = open(self.log_file,'w')
         f.close()
         pre_num = 0
         while (True):
             time.sleep(T)
             rate = (self.packet_in_num - pre_num)/T
             pre_num = self.packet_in_num
-            f = open('./Out/icn/controller_log','a')
+            f = open(self.log_file,'a')
             print(rate,file=f)
             f.close()
             
@@ -288,9 +300,8 @@ class ICSDNController(app_manager.RyuApp):
         else:
             publisher = dict({'ip':ip_dst})
         if publisher is not None and publisher['ip'] in self.net:
-            print('lookup path for ' + str(publisher['ip']))
-            print(' from ' + str(ip_src))
-                        
+            print('lookup path for ' + str(publisher['ip']) + ' from ' + str(ip_src))
+                                    
             path = nx.shortest_path(self.net, ip_src, publisher['ip'])
 
             # for switch in path[1:]:
@@ -450,8 +461,10 @@ class ICSDNController(app_manager.RyuApp):
                 match = parser.OFPMatch(in_port=oport, eth_type=ether_types.ETH_TYPE_IP, ip_proto=self.DATA_PROTOCOL,
                                         ipv4_dst=flow_id)
                 self.add_flow(msg_datapath, 1, 1, match, actions)
+            print('finding iport from next_hop '+str(next_hop)+ ' to switch ' + str(switch))
+            print(self.net[next_hop])
             if 'port' in self.net[next_hop][switch]:
-                iport= self.net[next_hop][switch]['port']
+                iport = self.net[next_hop][switch]['port']
             
         #send back the packet to the switch for matching operations
         oport = self.net[msg.datapath.id][next_ports[next_ports.index(msg.datapath.id)+1]]['port']
@@ -579,16 +592,21 @@ class ICSDNController(app_manager.RyuApp):
     @set_ev_cls(event.EventSwitchEnter)
     def get_topology_data(self, ev):
         s_id = ev.switch.dp.id        
+        print('-----------------------------------------------')     
         print('new switch:',s_id)
         links_list = get_link(self,s_id)
         while(len(links_list)==0):
             links_list = get_link(self,s_id)
         links = [(link.src.dpid, link.dst.dpid, {'port': link.src.port_no})
                  for link in links_list]
-        print (links)
         self.links.extend(links)
+        
+        links = [(link.dst.dpid, link.src.dpid, {'port': link.dst.port_no})
+                 for link in links_list]
+        self.links.extend(links)
+        
         self.switches.append(s_id)
-        print('all links')
+
         print(self.links)
         self.net.add_nodes_from(self.switches)
         self.net.add_edges_from(self.links)

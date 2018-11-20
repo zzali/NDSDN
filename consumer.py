@@ -20,32 +20,41 @@ from collections import defaultdict
 from log import Log
 #from multiprocessing import Queue
 import queue
+from multiprocessing.pool import ThreadPool
+
 #import psutil
       
 class consumer():
-    def __init__(self, experiment,host_id, src_eth, src_ip):
+    
+    def __init__(self, protocol, experiment, sample, host_id, src_eth, src_ip):
         self.flow_num = 0
         self.int_num = 0
-        self.PATTERN_PATH = './Requests/'
-        self.OUTPUT_PATH = './Out/'+experiment+'/'
+        self.PATTERN_PATH = './Requests/'+ sample+'/'
+        print(self.PATTERN_PATH)
+        self.OUTPUT_PATH = './Out/'+protocol + '/' + experiment + '/'+sample + '/'
+        print(self.OUTPUT_PATH)
         self.CHUNK_SIZE = 1000#Bytes
         self.CHUNK_NUM = 10
-        self.TIMEOUT = 10 #s
+        self.TIMEOUT = 20 #s
         self.LIFETIME = 1  #s 
-        self.BUFF_SIZE = 10000
-        self.q_input_task = queue.Queue(self.BUFF_SIZE)
-        self.q_output_task = queue.Queue(self.BUFF_SIZE)
+        self.BUFF_SIZE = 300
+#        self.q_input_task = queue.Queue(self.BUFF_SIZE)
+#        self.q_output_task = queue.Queue(self.BUFF_SIZE)
+        self.q_input_task = ThreadPool(self.BUFF_SIZE)        
+        self.q_output_task = ThreadPool (self.BUFF_SIZE)
+        
         self.recieved_data=defaultdict()
         self.recieved_data_lock = threading.Lock()
 #        self.threadq_waiting=[]
 #        self.MAX_THREAD = 1000
 #        self.MAX_FD = 16384
 #        self.threadq_running=0
-        self.slog_delay_int=Log(self.OUTPUT_PATH+'delay_int_s',100)
-        self.slog_delay_data=Log(self.OUTPUT_PATH+'delay_data_e',100)
-        slog=Log(self.OUTPUT_PATH+'down_time_'+host_id+'_s',20)
-        elog=Log(self.OUTPUT_PATH+'down_time_'+host_id+'_e',20)
-        hop_log=Log(self.OUTPUT_PATH+'hop_count_'+host_id,100)
+        self.slog_delay_int=Log(self.OUTPUT_PATH+'delay_int_'+host_id+'_s',50)
+        self.slog_delay_data=Log(self.OUTPUT_PATH+'delay_data_'+host_id+'_e',50)
+        self.dl_num = 0
+        self.slog=Log(self.OUTPUT_PATH+'down_time_'+host_id+'_s',50)
+        self.elog=Log(self.OUTPUT_PATH+'down_time_'+host_id+'_e',50)
+        hop_log=Log(self.OUTPUT_PATH+'hop_count_'+host_id,50)
         
 #        t_threadExecution = threading.Thread(target=self.start_threads, args=())
 #        t_threadExecution.start()
@@ -54,41 +63,49 @@ class consumer():
             
         reqs,times=self.read_requests(host_id)
         
-        t_in_task = threading.Thread(target=self.send_req, args=())
-        t_in_task.start()
+#        t_in_task = threading.Thread(target=self.send_req, args=())
+#        t_in_task.start()
+#        
+#        t_out_task = threading.Thread(target=self.get_reply, args=())
+#        t_out_task.start()
         
-        t_out_task = threading.Thread(target=self.get_reply, args=())
-        t_out_task.start()
-        
-        t_generator = threading.Thread(target=self.generate_requests, args=(src_eth, src_ip, host_id,slog, reqs, times))
+        t_generator = threading.Thread(target=self.generate_requests, args=(src_eth, src_ip, host_id, reqs, times))
         t_generator.start()
         
-        t_consumer = threading.Thread(target=self.consume_requests, args=(src_eth, host_id,elog,hop_log))
+        t_consumer = threading.Thread(target=self.consume_requests, args=(src_eth, host_id,hop_log))
+               
         t_consumer.start()
+        t_consumer.join()
+#        t_out_task.join()
+#        t_in_task.join()
+#        self.q_input_task.join()
+#        self.q_output_task.join()
 
         
-    def send_req(self):
-        while True:
-#           time.sleep(0.0001)
-           task = self.q_input_task.get()
-           if task is None:
-               continue
-           else:
-               task.start()
-               #print('thread num: ',threading.active_count())
-                
-    def get_reply(self):
-        while True:
-#           time.sleep(0.0001)
-           task = self.q_output_task.get()
-           if task is None:
-               continue
-           else:
-               task.start()
-               print('thread num: ',threading.active_count())
+#    def send_req(self):
+#        while True:
+##           time.sleep(0.0001)
+#           task = self.q_output_task.get()
+#           if task is None:
+#               continue
+#           else:
+#               task.start()
+##               print('q_output_task: ', self.q_output_task.qsize())
+##               print('thread num: ',threading.active_count())
+#                
+#    def get_reply(self):
+#        while True:
+##           time.sleep(0.0001)
+#           task = self.q_input_task.get()
+#           if task is None:
+#               continue
+#           else:
+#               task.start()
+#               print('q_input_task: ', self.q_input_task.qsize())
+#               print('thread num: ',threading.active_count())
                 
     def timeout_callback(self,host_id,content, chunk, flow_num, src_eth, src_ip):
-        print ('timeout')
+#        print ('Lifetime expired')
         self.recieved_data_lock.acquire()
        # print('after lock')
         if flow_num not in self.recieved_data[content]:
@@ -97,7 +114,8 @@ class consumer():
             return
         if time.time()-self.recieved_data[content][flow_num]['stime']>=self.TIMEOUT:
             print('timeout: ', flow_num)
-            del self.recieved_data[content][flow_num]        
+#            self.elog.save(content,0,str(flow_num))
+            del self.recieved_data[content][flow_num]    
             #self.recieved_data[content].pop(flow_num)
             self.recieved_data_lock.release()
             #print('lock release')
@@ -108,8 +126,9 @@ class consumer():
                         , self.timeout_callback,args=(host_id,content,chunk,flow_num,src_eth, src_ip, ))
         self.recieved_data[content][flow_num].update({chunk:[timer,0]}) #[timer,hop_count]
         self.int_num += 1
-        self.q_output_task.put(threading.Thread(target=self.send_packet,
-             args=(host_id+str(self.int_num),src_eth, 'ff:ff:ff:ff:ff:ff', content, chunk, flow_num, src_ip)),True)
+        self.q_output_task.apply_async(self.send_packet,args=(host_id+'_'+str(self.int_num),src_eth, 'ff:ff:ff:ff:ff:ff', content, chunk, flow_num, src_ip,))
+#        self.q_output_task.put(threading.Thread(target=self.send_packet,
+#             args=(host_id+'_'+str(self.int_num),src_eth, 'ff:ff:ff:ff:ff:ff', content, chunk, flow_num, src_ip)),True)
                                                 
                         
     def packet_in_rate(self):
@@ -117,7 +136,7 @@ class consumer():
         while (True):
             time.sleep(T)
             f = open('./Out/rate_log','a')
-            print('h', self.req_num, time.time(),file=f)
+#            print('h', self.req_num, time.time(),file=f)
             f.close()
             
     def decode_ndn(self,ndn_bytes):
@@ -131,7 +150,7 @@ class consumer():
         
     def encode_in_2bytes(self,field):
         #print(type(field))
-        field_len=len(field)
+        field_len = len(field)
         data = bytearray()
         data.append(field_len)
         data = data + bytearray(field, 'utf-8')
@@ -139,8 +158,10 @@ class consumer():
         return data
     
     #Int packet: {content_name_len(2bytes)+content_name+chunk_numlen(2bytes)+chunk_num}
-    def send_packet(self,req_id, et_src, et_dst, content_name, chunk_num, flow_num, ip_src, 
-                     ip_proto=150, mpls_ttl=10):
+    def send_packet(self,req_id, et_src, et_dst, content_name, chunk_num, flow_num, ip_src):
+#        req_id, et_src, et_dst, content_name, chunk_num, flow_num, ip_src = args[0], args[1],args[2],args[3],args[4],args[5],args[6]
+        ip_proto=150
+        mpls_ttl=10
         
         ether = Ether(src=et_src, dst=et_dst)
         
@@ -148,7 +169,7 @@ class consumer():
         label.update(content_name.encode())
         name_bytes = label.digest()
         mpls_label = name_bytes[0]*4096 + name_bytes[1]*16 + (name_bytes[2]>>4)#first 20 bits 
-        #print('content name ' ,content_name, 'mpls label:', mpls_label)
+#        print('content name ' ,content_name, 'mpls label:', mpls_label)
         mpls = MPLS(label=mpls_label, ttl=mpls_ttl)
           
         #creating Interest packet
@@ -159,9 +180,11 @@ class consumer():
         packet = ether / mpls / ip / data.decode()
         self.recieved_data[content_name][flow_num][chunk_num][0].start()
         self.slog_delay_int.save(content_name, chunk_num,str(req_id))
-        sendp(packet)
-        print ('task num:',self.q_output_task.qsize())     
-        self.q_output_task.task_done()    
+#        print("sending packet " + str(flow_num) + "...")
+        sendp(packet,verbose=False)
+#        print("packet is sent")
+#        print ('task num:',self.q_output_task.qsize())     
+#        self.q_output_task.task_done()    
         
         
     def read_requests(self,h_id):
@@ -181,7 +204,7 @@ class consumer():
         return reqs,times
         
     
-    def generate_requests(self,src_eth, src_ip, s_id, slog, reqs, times):
+    def generate_requests(self,src_eth, src_ip, s_id, reqs, times):
         #chunk=bytearray([255]*CHUNK_SIZE)
         
         for r in reqs:
@@ -189,11 +212,11 @@ class consumer():
             #f=open(self.OUTPUT_PATH+str(s_id)+'_log.txt','a')
             #print('request for content: '+str(r),file=f)
             #f.close()
-            #print('interest time for ', r, ':',time.time())
+#            print('interest time for ', r, ':',time.time())
             flow_num = self.flow_num            
             self.flow_num += 1
             self.recieved_data.setdefault(r,dict())
-            slog.save(r,0,str(flow_num))     
+            self.slog.save(r,0,str(flow_num))     
             self.recieved_data[r].update({flow_num:dict()})
             self.recieved_data[r][flow_num].update({'finished':set()})
             self.recieved_data[r][flow_num].update({'stime':time.time()})
@@ -203,8 +226,9 @@ class consumer():
                 timer = Timer(self.LIFETIME, self.timeout_callback,args=(s_id,r,k,flow_num,src_eth, src_ip, ))
                 self.recieved_data[r][flow_num].update({k:[timer,0]}) #[timer,hop_count]
                 self.int_num += 1
-                self.q_output_task.put(threading.Thread(target=self.send_packet,
-                                                      args=(s_id+str(self.int_num),src_eth, 'ff:ff:ff:ff:ff:ff', r, k, flow_num, src_ip)),True)
+                self.q_output_task.apply_async(self.send_packet, args=(s_id + '_' + str(self.int_num),src_eth, 'ff:ff:ff:ff:ff:ff', r, k, flow_num, src_ip,))
+#                self.q_output_task.put(threading.Thread(target=self.send_packet,
+#                                                      args=(s_id + '_' + str(self.int_num),src_eth, 'ff:ff:ff:ff:ff:ff', r, k, flow_num, src_ip)),True)
                             
     def decode_packet(self, packet):
         """
@@ -233,46 +257,54 @@ class consumer():
         fields.update({'hop_count':64-packet[IP].ttl})
         return fields        
         
-    def service_packet_thread(self, s_id, packet, elog,hop_log):
+    def service_packet_thread(self, s_id, data_pack_fields, hop_log):
+#        s_id, data_pack_fields, hop_log = args[0], args[1], args[2]
         #eth_src = packet[Ether].src
         #eth_dst = packet[Ether].dst
-        data_pack_fields = self.decode_packet(packet)
-        if data_pack_fields['proto'] == 151:
-            #print ('Data packet from: ', data_pack_fields['src_ip'],\
-            #        ' to ', data_pack_fields['dst_ip'])
-            #print ('data')
-            content_name = data_pack_fields['content_name']
-            chunk_num = data_pack_fields['chunk_num']
-            #self.slog_delay_data.save(content_name, chunk_num)
-            #print('number of reqs for name ', content_name, ': ', len(recieved_data[content_name]))
-            
-            #print('data time for ', chunk_num, ':',time.time())
-            self.recieved_data_lock.acquire()
-            #print('after lock in data')
-            for flow in self.recieved_data[content_name].copy():
-                if chunk_num not in self.recieved_data[content_name][flow]['finished']:
-                    self.recieved_data[content_name][flow][chunk_num][1] = data_pack_fields['hop_count']
-                    self.recieved_data[content_name][flow][chunk_num][0].cancel()
-                    self.recieved_data[content_name][flow]['finished'].add(chunk_num)
-                    #hop_log.save(flow, content_name,chunk_num,str(data_pack_fields['hop_count']))
-                    if (len(self.recieved_data[content_name][flow]['finished'])==self.CHUNK_NUM):
-        #               avg_hop_count = (sum(d for d in recieved_data[content_name][i].values())-recieved_data[content_name][i]['stime'])/float(CHUNK_NUM)
-                        #print('save to file')
-                        elog.save(content_name,0,str(flow))
-                        self.recieved_data[content_name].pop(flow)
-            self.recieved_data_lock.release()
-            #print('after lock release in data')
-        self.q_input_task.task_done()
+    
+#        print("data_chunk_thread");
+#        print ('Data packet from: ', data_pack_fields['src_ip'],
+#                ' to ', data_pack_fields['dst_ip'])
+        #print ('data')
+        content_name = data_pack_fields['content_name']
+        chunk_num = data_pack_fields['chunk_num']
+        #self.slog_delay_data.save(content_name, chunk_num)
+        #print('number of reqs for name ', content_name, ': ', len(recieved_data[content_name]))
+        
+        #print('data time for ', chunk_num, ':',time.time())
+        self.recieved_data_lock.acquire()
+        #print('after lock in data')
+        for flow in self.recieved_data[content_name].copy():
+            if chunk_num not in self.recieved_data[content_name][flow]['finished']:
+                self.recieved_data[content_name][flow][chunk_num][1] = data_pack_fields['hop_count']
+                print("data recived: " + str(content_name) + ':' + str(flow))
+                self.recieved_data[content_name][flow][chunk_num][0].cancel()
+                self.recieved_data[content_name][flow]['finished'].add(chunk_num)
+                #hop_log.save(flow, content_name,chunk_num,str(data_pack_fields['hop_count']))
+                if (len(self.recieved_data[content_name][flow]['finished'])==self.CHUNK_NUM):
+                    #avg_hop_count = (sum(d for d in recieved_data[content_name][i].values())-recieved_data[content_name][i]['stime'])/float(CHUNK_NUM)
+                    #print('save to file')
+                    self.elog.save(content_name,0,str(flow))
+                    #self.dl_num += 1
+                    self.recieved_data[content_name].pop(flow)
+        self.recieved_data_lock.release()
+        #print('after lock release in data')
+#        self.q_input_task.task_done()
                                         
                     
-    def service_packet(self, s_id, packet,elog, hop_log):
+    def service_packet(self, s_id, packet, hop_log):
         if packet.haslayer(IP):
-            self.q_input_task.put(threading.Thread(target=self.service_packet_thread, 
-                                                     args=(s_id, packet,elog,hop_log, )),True)
+#            print("recieved packet");
+            data_pack_fields = self.decode_packet(packet)
+            if data_pack_fields['proto'] == 151:
+#                print("recieved data chunk");
+                self.q_input_task.apply_async(self.service_packet_thread,args=(s_id, data_pack_fields, hop_log,))
+#                self.q_input_task.put(threading.Thread(target=self.service_packet_thread, 
+#                                                    args=(s_id, data_pack_fields, hop_log, )),True)
                                    
                 
-    def consume_requests( self, src_eth, s_id, elog, hop_log):
-       sniff(prn=lambda x: self.service_packet(s_id, x, elog, hop_log))#, lfilter=lambda x: eth_src in x.summary())
+    def consume_requests( self, src_eth, s_id, hop_log):
+       sniff(prn=lambda x: self.service_packet(s_id, x, hop_log))#, lfilter=lambda x: eth_src in x.summary())
       
 #    def start_threads(self):
 #        while True:
@@ -285,15 +317,21 @@ class consumer():
                 
     
 if __name__ == '__main__':
+    print('starting consumer...')
     parser = OptionParser()
     parser.add_option("-i", "--host", dest="host_id",
                       help="Host ID")
     parser.add_option("-e", "--experiment", dest="exp",
-                      help="experiment name")
+                      help="experiment name (BW, delay)")
+    parser.add_option("-p", "--protocol", dest="protocol",
+                      help="protocol (icn/noicn)")
+    parser.add_option("-s", "--sample", dest="smpl",
+                      help="sample name")
     (options, args) = parser.parse_args()
     host_id = (options.host_id) if options.host_id else '1'
-    exp = (options.exp) if options.exp else 'topo_0'
-    
+    exp = (options.exp) if options.exp else 'free'
+    protocol = (options.protocol) if options.protocol else 'icn'
+    smpl = (options.smpl) if options.smpl else 1
     for iface in netifaces.interfaces():
         addrs = netifaces.ifaddresses(iface)
         if iface.startswith('lo'):
@@ -303,6 +341,7 @@ if __name__ == '__main__':
             src_eth = addrs[netifaces.AF_LINK][0]['addr']
             src_ip = addrs[netifaces.AF_INET][0]['addr']
             break
-    consumer_host = consumer(exp,host_id,src_eth,src_ip)
+#    print('starting consumer...')
+    consumer_host = consumer(protocol,exp,smpl,host_id,src_eth,src_ip)
     
     

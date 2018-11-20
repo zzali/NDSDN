@@ -1,4 +1,0 @@
-sudo mn --custom topology.py --controller=remote,port=9999 --switch=ovsk,protocols=OpenFlow14 --topo mytopo --mac --arp
-
-ryu-manager --ofp-tcp-listen-port 9999 first.py --observe-links
-

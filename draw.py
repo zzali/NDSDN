@@ -12,20 +12,21 @@ import numpy as np
 from optparse import OptionParser
 import log
 import collections
+import commands
 
 OUTPATH='./Out/'
 LINESTYLES=['-', '--','-.', ':',' ']
 MARKERS=['.','s','d','x','p','o','P']
-COLORS=['b', 'r', 'b', 'c', 'm', 'y', 'k']
+COLORS=['b', 'r', 'g', 'c', 'm', 'y', 'k']
 OUTPUT_PATH='./Out/'
 
 def octaveAverage(vector, max_count):
     avg = []
     x=[1,3,6,12,24,48,96,192,384,768,1500]
+    
     max_class=0
     while x[max_class]<=max_count:
         max_class += 1
-    print (max_class)
     for i in range(1,max_class+1):
         if i==1:
            a=1;
@@ -60,16 +61,17 @@ def octaveAverage(vector, max_count):
         elif i==11:
            a=1001;
            b=1500; 
-           
+
         temp=[vector[j-1] for j in range(a,min(b+1,max_count)) if vector[j-1]!=None]
-        #if i==9:
-        #    print(temp) 
+    
         if len(temp)>0:
             avg.append((sum(temp)/float(len(temp))))
         else:
             avg.append(0)
-        #print (round(avg[i-1],2))
+       
     return avg,x[0:max_class]
+    
+
 
 
 def draw(data_x,data_y,x_label,y_label,xtick, legend, color, linestyle, marker, fig_name,out_path):
@@ -90,15 +92,13 @@ def draw(data_x,data_y,x_label,y_label,xtick, legend, color, linestyle, marker, 
         if len(data_y[i])==0:
             return
         diag.append(ax.plot(data_x[i] , data_y[i] ,color= color[i], linestyle=linestyle[i],marker=marker[i],linewidth = 3,label=legend[i]))
-#        print(data_x[i])
-#        print(data_y[i])
-    #ax.set_xscale('log')
+
     ax.set_xlabel(x_label,fontsize=10)
     ax.set_ylabel(y_label,fontsize=10)
     n = len(data_x[0])
     plt.xticks(xtick)
     ax.legend(loc=0,fontsize=14) 
-    print(legend)
+
     fig.savefig(out_path + fig_name+ '.pdf',format='PDF',dpi=5)
     
 def load_rate_stats(file_path):
@@ -117,6 +117,7 @@ def load_rate_stats(file_path):
         line = f.readline().rstrip()
     return bit_rate_in, bit_rate_out, pack_rate_in, pack_rate_out
         
+        
 def plot_rate_stats(proto):
     s_ids = ryufunc.get_switches()
     for s in s_ids:
@@ -130,169 +131,160 @@ def plot_rate_stats(proto):
         draw([x_bit,x_bit_udp],[y_bit,y_bit_udp], 'Input byte rate per second', 'Output byte rate per second',['test','ideal'], ['b','r'], ['-.','-'], ['','.'], str(s)+'_switch_bitrate_'+proto)
         draw([x_pack,x_pack_udp],[y_pack,y_pack_udp], 'Input packet rate per second', 'Output packet rate per second',['test','ideal'], ['b','r'], ['-.','-'], ['','.'], str(s)+'_switch_packrate_'+proto)
         
-def read_RT_delay(host_id, proto):
-    f = open(OUTPATH+str(host_id)+'_log_'+proto+'.txt')
-    RT=dict()
-    delay=dict()
-    line = f.readline().rstrip()
-    while line:
-        if line.startswith('download complete for :'):
-            fields=line.split(':')
-            if proto=='icn':
-                delay.setdefault(int(fields[1]),[]).append(float(fields[2]))
-                print(float(fields[3]))
-                RT.setdefault(int(fields[1]),[]).append(float(fields[3]))
-            else:
-                RT.setdefault(int(fields[1]),[]).append(float(fields[2]))
-        line = f.readline().rstrip()
-    if proto=='icn':
-        for key in delay.keys():
-            delay[key] = sum(d for d in delay[key])/float(len(delay[key]))
-    for key in RT.keys():
-        RT[key] = sum(r for r in RT[key])/float(len(RT[key]))
-    print('RT average:', sum(RT.values())/float(len(RT)))
-    return RT, delay
-   
-def plot_SH_processT():
-    res = log.read_corresponding_times('SH_process_s','SH_process_e')
-    draw([range(1,len(res)+1)],[res],'content ID','time (ms)',['icn'], ['r'], ['-'], ['.'], 'SH_process')
-    
-#def plot_delay(protocol, host_id, delay_dict):
-#    x = np.arange(len(delay_dict.keys()))        
-#    y = np.array(delay_dict.values()).astype(np.float)
-#    y_mask = np.isfinite(y)
-#    draw([x[y_mask]],[y[y_mask]], 'Content IDs', 'Hop Count',[''], ['b'], ['-'], ['.'], str(host_id)+'_'+protocol+'_delay')    
-    
-def plot_RT(protocol, host_ids,out_path):
-    res=dict()
-    x=dict()
-    xtick=[200,400,600,800,1000,1200,1400,1600]
-    for h in host_ids:
-        items_main = log.read_corresponding_extra(out_path+protocol+'_down_time_'+h+'_s',out_path+protocol+'_down_time_'+h+'_e')
-        items = collections.OrderedDict(sorted(items_main.items()))
-        print(items_main)
-        print(items)
-        print('')
-        print(items.values())
-        print('')
-        print(items.keys())
-        print('')
-        res.update({h:items.values()})
-        x.update({h:items.keys()})
-    draw(x.values(),res.values(),'content ID','time (s)',xtick,res.keys(), COLORS[:len(x)], LINESTYLES[:len(x)], MARKERS[:len(x)], 'down_time_'+protocol,out_path)
-    
-def plot_RT_topo(host_ids,out_path):
-    res=dict()
-    x=dict()
-    for h in host_ids:
-       
-        items_main = log.read_corresponding_extra(out_path+'icn/down_time_'+h+'_s',out_path+'icn/down_time_'+h+'_e')
-        items = collections.OrderedDict(sorted(items_main.items()))
-        value,key = octaveAverage(items.values(),max(items.keys()))
-        res.update({'icn':value})
-        x.update({'icn':key})
-        
-        items_main = log.read_corresponding_extra(out_path+'noicn/down_time_'+h+'_s',out_path+'noicn/down_time_'+h+'_e')
-        items = collections.OrderedDict(sorted(items_main.items()))
-        value,key = octaveAverage(items.values(),max(items.keys()))
-        res.update({'noicn':value})
-        x.update({'noicn':key})
      
-        xtick = key
-        draw(x.values(),res.values(),'content ID','time (s)',xtick,x.keys(), COLORS[:len(x)], LINESTYLES[:len(x)], MARKERS[:len(x)], 'down_time_'+h,out_path)
-    #['']*len(x)
-
-def plot_delay(out_path, host_id):
-    res=dict()
-    x=dict()
+  
     
-    temp = log.read_corresponding_extra('./Out/icn/'+'delay_int_s','./Out/icn/'+'delay_int_e')
-    value,key = octaveAverage(temp.values(), max(temp.keys()))
-    res.update({'icn':value})
-    x.update({'icn':key})
-    temp = log.read_corresponding_extra('./Out/noicn/'+'delay_int_s','./Out/noicn/'+'delay_int_e')
-    value,key = octaveAverage(temp.values(), max(temp.keys()))
-    res.update({'noicn':value})
-    x.update({'noicn':key})    
-    draw(x.values(),res.values(),'content ID','time (s)',key,x.keys(), COLORS[:len(x)], LINESTYLES[:len(x)], MARKERS[:len(x)], 'delay_int',out_path)
-    ##
-#    res=dict()
-#    x=dict()
-#    res.update({host_id:log.read_corresponding_times('./Out/icn/'data_s',out_path+'delay_data_e')})
-#    x.update({host_id:range(1,len(res[host_id])+1)})
-#    res.update({host_id:log.read_corresponding_times(OUTPUT_PATH+'noicn_delay_data_s',out_path+'delay_data_e')})
-#    x.update({host_id:range(1,len(res[host_id])+1)})
-#    draw(x.values(),res.values(),'content ID','time (s)',['Interest','Data'], COLORS[:len(x)], LINESTYLES[:len(x)], MARKERS[:len(x)], 'delay_data',out_path)
-    
-def plot_hop(protocol, host_ids,out_path):
-    res=dict()
-    x=dict()
+def compute_avg_RT(host_ids,exp,failedDL, smpl):
     for h in host_ids:
-        info = log.read_corresponding_extra(out_path+protocol+'_hop_count_'+h)
-        res.update({h:info.values()})
-        x.update({h:info.keys()})
+        icn_down_s_f = './Out/icn/'+exp+'/'+smpl+'/down_time_'+h+'_s'
+        icn_down_e_f = './Out/icn/'+exp+'/'+smpl+'/down_time_'+h+'_e'
+        noicn_down_s_f = './Out/noicn/'+exp+'/'+smpl+'/down_time_'+h+'_s'
+        noicn_down_e_f = './Out/noicn/'+exp+'/'+smpl+'/down_time_'+h+'_e'
+        
+        if failedDL:
+            items_main_icn, items_main_noicn  = log.read_corresponding_download_withFailed(icn_down_s_f, icn_down_e_f, noicn_down_s_f, noicn_down_e_f)
+        else:
+            items_main_icn = log.read_corresponding_extra(icn_down_s_f, icn_down_e_f)
+            items_main_noicn = log.read_corresponding_extra(noicn_down_s_f, noicn_down_e_f)
+        
+        items_icn = collections.OrderedDict(sorted(items_main_icn.items()))
+
+        value,key = octaveAverage(items_icn.values(),max(items_icn.keys()))
+        f = open('./Out/icn/' + options.exp + '/for_plot/' + smpl_str + '/down_time_'+h, 'w')
+        for i in range(len(key)):            
+            f.write(str(key[i])+ ' ' +str(value[i]) +'\n')
+        f.close()
+        items_noicn = collections.OrderedDict(sorted(items_main_noicn.items()))
+
+        value,key = octaveAverage(items_noicn.values(),max(items_noicn.keys()))
+        f = open('./Out/noicn/' + options.exp + '/for_plot/' + smpl_str + '/down_time_'+h, 'w')
+        for i in range(len(key)):            
+            f.write(str(key[i])+ ' ' +str(value[i]) +'\n')
+        f.close()
+ 
+
+def compute_avg_delay(host_ids, exp, failedInt, smpl):
+    for h in host_ids:
+        icn_delay_s_f = './Out/icn/'+exp+'/'+smpl+'/delay_int_'+h+'_s'
+        icn_delay_e_f = './Out/icn/'+exp+'/'+smpl+'/delay_int'+'_e_'+h
+        noicn_delay_s_f = './Out/noicn/'+exp+'/'+smpl+'/delay_int_'+h+'_s'
+        noicn_delay_e_f = './Out/noicn/'+exp+'/'+smpl+'/delay_int'+'_e_' +h
+        
+        if failedInt:
+            temp = log.read_corresponding_delay_withFailed(icn_delay_s_f, icn_delay_e_f)
+        else:
+            temp = log.read_corresponding_extra(icn_delay_s_f, icn_delay_e_f)
+        value,key = octaveAverage(temp.values(), max(temp.keys()))
+        f = open('./Out/icn/' + options.exp + '/for_plot/' +  smpl_str + '/delay_' + h, 'w')
+        for i in range(len(key)):            
+            f.write(str(key[i])+ ' ' +str(value[i]) +'\n')
+        f.close()
+        if failedInt:    
+            temp = log.read_corresponding_delay_withFailed(noicn_delay_s_f, noicn_delay_e_f)
+        else:
+            temp = log.read_corresponding_extra(noicn_delay_s_f, noicn_delay_e_f)
+        value,key = octaveAverage(temp.values(), max(temp.keys()))
+        f = open('./Out/noicn/' + options.exp + '/for_plot/' +  smpl_str + '/delay_' + h, 'w')
+        for i in range(len(key)):            
+            f.write(str(key[i])+ ' ' +str(value[i]) +'\n')
+        f.close()
+
     
-    draw(x.values(),res.values(),'content ID','hop count',res.keys(), COLORS[:len(x)], ['']*len(x), MARKERS[:len(x)], 'hop_count_'+protocol,out_path)
+def compute_avg_hop(host_ids, exp, smpl):
+
+    smpl_str = str(smpl)
+    for h in host_ids:
+        icn_hop_f = './Out/icn/'+exp+'/'+smpl+'/hop_count_'+ h
+        noicn_hop_f = './Out/noicn/'+exp+'/'+smpl+'/hop_count_'+ h
+                
+        info = log.read_corresponding_extra(icn_hop_f)
+        value,key = octaveAverage(info.values(), max(info.keys()))
+        with open('./Out/icn/' + options.exp +  '/for_plot/'  + smpl_str + '/hop_'+ h, 'w') as f:
+            for i in range(len(key)):            
+                f.write(str(key[i])+ ' ' +str(value[i]) +'\n')
+                
+        info = log.read_corresponding_extra(noicn_hop_f)
+        value,key = octaveAverage(info.values(), max(info.keys()))
+        with open('./Out/noicn/' + options.exp + '/for_plot/' + smpl_str + '/hop_'+ h, 'w') as f:
+            for i in range(len(key)):            
+                f.write(str(key[i])+ ' ' +str(value[i]) +'\n')
     
-def plot_controller_rate(out_path):
+def plot_controller_rate(exp, smpl):
+    out_path = './Out/icn/' + exp + '/' + smpl + '/'
     f = open(out_path+'controller_log')
     r = f.readline().rstrip()
     rates=[]
     while r:
         rates.append(float(r))
         r = f.readline()
-    x = range(1,len(rates)+1)
-    xtick = x[1:len(x):len(x)/10]
-    draw([x],[rates],'time','packet-in rate per second',xtick,[''], ['b'], ['-'], ['o'], 'controller_rate', out_path)
     
-def plot_SH_rate(out_path):
-    for s in range(1,4):
-        sh = str(s)
-        f = open(out_path+sh+'_SH_rate')
-        r = f.readline().rstrip()
-        rates = []
-        rates.append([])
-        rates.append([])        
-        while r:
-            fields = r.split()
-            rates[0].append(float(fields[0]))
-            rates[1].append(float(fields[1]))
-            r = f.readline()
-        x = [range(1,len(rates[0])+1)]
-        x.append(range(1,len(rates[1])+1))
-        xtick = x[0][1:len(x[0]):len(x[0])/10]
-        draw(x,rates,'time','Byte per second',xtick,['Input','Output'], ['b','k'], ['-','-.'], ['o','s'], 'sh_rate_'+sh, out_path)
+def get_avg_of_smpls(path, file_name):
+    values = dict()
+    for smpl in range(1,smpl_num + 1):
+        f = open(path + str(smpl) + '/' + file_name, 'r')
+        line_str = f.readline().rstrip()
+        while line_str:
+            fields = line_str.split()
+            x = int(fields[0])
+            if x in values.keys():
+                values[x] += float(fields[1])
+            else:
+                values.update({x:float(fields[1])})
+            line_str = f.readline().rstrip()
+            
+    for x in values.keys():
+        values[x] = values[x]/float(smpl_num)
+    return collections.OrderedDict(sorted(values.items())) 
     
-    
-#def plot_RT(protocol, host_id, RT_dict):
-#    x = np.arange(len(RT_dict.keys()))        
-#    y = np.array(RT_dict.values()).astype(np.float)
-#    y_mask = np.isfinite(y)
-#    draw([x[y_mask]],[y[y_mask]], 'Content IDs', 'RT (ms)',[''], ['b'], ['-'], ['.'], str(host_id)+'_'+protocol+'_RT')    
+def plot(file_name, exp, smpl_num, y_label, diagram_name):
+    dgrm_x = dict()
+    dgrm_y = dict()
+    values = get_avg_of_smpls('./Out/icn/'+options.exp+'/for_plot/', file_name)
+    dgrm_x.update({'icn':values.keys()})
+    dgrm_y.update({'icn':values.values()})
+    values = get_avg_of_smpls('./Out/noicn/'+options.exp+'/for_plot/', file_name)
+    dgrm_x.update({'noicn':values.keys()})
+    dgrm_y.update({'noicn':values.values()})
+          
+    commands.getstatusoutput('mkdir -p ./Out/plots/'+exp)
+    draw(dgrm_x.values(), dgrm_y.values(),'content ID',y_label, dgrm_x['icn'], dgrm_x.keys(), COLORS[:2], ['-']*2, MARKERS[:2], diagram_name ,'./Out/plots/'+exp+'/')
+
     
 if __name__ == '__main__':
     parser = OptionParser()
     parser.add_option("-i", "--host", dest="host_id",
                       help="Host ID")
-#    parser.add_option("-o", "--outpath", dest="outpath",
-#                      help="outpath")
+    parser.add_option("-f", "--withFailed", dest="withFailed",
+                      help="considering failed interests or downloads")
+    parser.add_option("-e", "--experiment", dest="exp",
+                      help="experiment_name")
+    parser.add_option("-s", "--sample", dest="smpl_num",
+                      help="sample_num")
+
     (options, args) = parser.parse_args()
     host_ids = options.host_id.split(',')
-#    out_path=options.outpath if options.outpath else OUTPATH
-#    plot_RT(options.protocol, host_ids ,out_path)
-    plot_hop(options.protocol, host_ids, out_path)
-    plot_controller_rate('./Out/icn/')
-    
-    plot_RT_topo(host_ids,'./Out/')
-    #plot_SH_rate(out_path)
-    
-    
 
-
+       
+    if options.withFailed=='yes':
+        failed = True
+    else:
+        failed = False
+       
+    smpl_num = int(options.smpl_num)
+  
+    #compute average of each parameter for some content sets according to octave_avg
+    for smpl in range(1,smpl_num+1):
+        smpl_str = str(smpl)
+        commands.getoutput('mkdir -p ./Out/icn/' + options.exp + '/for_plot/' + smpl_str + '/')
+        commands.getoutput('mkdir -p ./Out/noicn/' + options.exp + '/for_plot/' + smpl_str + '/')
+        compute_avg_RT(host_ids, options.exp, failed, smpl_str)
+        compute_avg_delay(host_ids, options.exp, failed, smpl_str)
+        
+    #compute the average of each parameter for all the samples and plot the average diagram
+    for h in host_ids:    
+        plot('delay_'+h, options.exp, smpl_num, 'Average delay (s)', 'delay_' + h )
+        plot('down_time_'+h, options.exp, smpl_num, 'Average download time (s)' , 'down_time_' + h )
+    
     #RT, delay = read_RT_delay(host_id, options.protocol)
-    #if options.protocol=='icn':
-        #plot_delay(options.protocol,host_id,delay)
-    #    plot_rate_stats(options.protocol)
-
-    #plot_SH_processT(options.protocol, host_id)
+   
     

@@ -14,7 +14,18 @@ if __name__ == '__main__':
     parser = OptionParser()
 #    parser.add_option("-a", "--add", dest="add",
 #                      help="add a file to repo")
-    parser.add_option("-p", "--path",
+    
+    parser.add_option("-i", "--s_id",
+                      dest="s_id",
+                      help="switch id")
+    parser.add_option("-e", "--experiment", dest="exp",
+                      help="experiment name")
+    parser.add_option("-p", "--protocol", dest="protocol",
+                      help="protocol (icn/noicn)")
+    parser.add_option("-s", "--sample", dest="smpl",
+                      help="sample name")
+                      
+    parser.add_option("-c", "--path",
                       dest="path",
                       help="folder path of content files")
     parser.add_option("-r", "--req",

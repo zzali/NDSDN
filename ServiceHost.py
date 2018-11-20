@@ -24,6 +24,8 @@ import hashlib
 import netifaces
 #import psutil
 from log import Log
+from multiprocessing.pool import ThreadPool
+
 
 LIFETIME= 1 # s
 T=0
@@ -55,15 +57,15 @@ def decode_ndn(ndn_bytes):
     return content_name,chunk,data
     
 class Service_Host(object):
-    def __init__(self,exp,s_id, repo_path=None):
-        self.OUT_PATH = './Out/'+exp+'/'
+    def __init__(self,protocol,experiment, sample, s_id, repo_path=None):
+        self.OUT_PATH = './Out/'+protocol+'/' + experiment + '/' + sample 
         self.CONTROLLER_ETH = '1c:6f:65:ca:15:df'
         self.CONTROLLER_IP = ''
         self.REPO_PORT = 5000
         self.REPO_PATH = repo_path
         self.CHUNK_SIZE = 1000
-        self.BUFF_SIZE = 1000
-        self.q_task = queue.Queue(self.BUFF_SIZE)
+        self.BUFF_SIZE = 300
+#        self.q_task = queue.Queue(self.BUFF_SIZE)
         self.MPLS_TTL = 10
         self.INT_PROTO = 150
         self.DATA_PROTO = 151
@@ -77,47 +79,52 @@ class Service_Host(object):
         self.SH_OUT_FACE = str()
         #self.SH_OUT_IP = str()
         self.SH_OUT_ETH = str()
+        self.q_task = ThreadPool(self.BUFF_SIZE) 
         for iface in netifaces.interfaces():
             addrs = netifaces.ifaddresses(iface)
             if iface.endswith('100'):
                 self.SH_IN_FACE = iface
                 self.SH_IN_IP = addrs[netifaces.AF_INET][0]['addr']
                 self.SH_IN_ETH = addrs[netifaces.AF_LINK][0]['addr']
-                print("IN port:",self.SH_IN_FACE, self.SH_IN_IP, self.SH_IN_ETH)
+#                print("IN port:",self.SH_IN_FACE, self.SH_IN_IP, self.SH_IN_ETH)
             elif iface.endswith('101'):
                 self.SH_OUT_FACE = iface
                 #self.SH_OUT_IP = addrs[netifaces.AF_INET][0]['addr']
                 self.SH_OUT_ETH = addrs[netifaces.AF_LINK][0]['addr']
-                print("OUT port:",self.SH_OUT_FACE,  self.SH_OUT_ETH)
+#                print("OUT port:",self.SH_OUT_FACE,  self.SH_OUT_ETH)
             elif iface.endswith('eth0'):
                 self.SH_OUT_FACE = self.SH_IN_FACE = iface
                 self.SH_IN_IP = addrs[netifaces.AF_INET][0]['addr']
                 self.SH_IN_ETH = self.SH_OUT_ETH = addrs[netifaces.AF_LINK][0]['addr']
-                print("IN port:",self.SH_IN_FACE, self.SH_IN_IP, self.SH_IN_ETH)
+#                print("IN port:",self.SH_IN_FACE, self.SH_IN_IP, self.SH_IN_ETH)
                 
         if repo_path is None:
             self.isRepo = False
             self.cache = CS(s_id,chunk_size=self.CHUNK_SIZE, ip_src=self.SH_IN_IP)
             self.send_register_packet(self.name2label(''))
+            
         else:
             self.isRepo = True
             self.cache = CS(s_id,repo_path,self.CHUNK_SIZE, self.SH_IN_ETH,self.SH_IN_IP)
             
-        self.pit = PIT(exp,self.SH_IN_IP,s_id)
-        self.log_delay_int = Log(self.OUT_PATH+'delay_int_e',100)
-        self.log_delay_data = Log(self.OUT_PATH+'delay_data_s',100)
+        self.pit = PIT(protocol,self.SH_IN_IP,s_id)
+        self.hosts = []
+        self.log_delay_int = dict() #Log(self.OUT_PATH+'/delay_int_e',100)
+        self.log_sh = Log(self.OUT_PATH+'/delay_sh_' + str(s_id) ,50)
+#       self.log_delay_data = Log(self.OUT_PATH+'delay_data_s',100)
+        
         
         ##A thread running tasks in the queue
-        Thread(target=self.process_queue, args=()).start()
+#        Thread(target=self.process_queue, args=()).start()
 
-    def process_queue(self):
-        while True:
-            time.sleep(0.0001)
-            task = self.q_task.get()
-            if task is None:
-                continue
-            else:
-                task.start()
+#    def process_queue(self):
+#        while True:
+#            time.sleep(0.0001)
+#            task = self.q_task.get()
+#            if task is None:
+#                continue
+#            else:
+#                task.start()
         
     def decode_packet(self,packet):
         """
@@ -156,22 +163,36 @@ class Service_Host(object):
         :param int_packet: interest packet to be handled 
         :return: None
         """   
-     
         chunk_num = int_pac_fields['chunk_num']
         content_name = int_pac_fields['content_name']
-        #print(content_name,chunk_num)
+#        print("interest: ", content_name,chunk_num)
+#        self.log_sh.save(int_pac_fields['content_name'], int_pac_fields['chunk_num'], 'before lookup interest:'+str(time.time()));
         data = self.cache.lookup(content_name, chunk_num)
-        if data is not None and len(data)>0:
-            #print('data in cache or repo')
+#        self.log_sh.save(int_pac_fields['content_name'], int_pac_fields['chunk_num'], 'after lookup interest:'+str(time.time()));
+      
+        if data is not None:# and len(data)>0:
+#            print('sending data from cache or repo')
             packet = self.create_packet(data,int_pac_fields['flow_id'],
                                         int_pac_fields['in_port'],self.SH_IN_ETH,self.SH_IN_IP)
             #print('+++',packet[IP].load)
-            self.log_delay_int.save(content_name, chunk_num,int_pac_fields['data'])
-            sendp(packet,iface=self.SH_OUT_FACE)
+            host_id = int_pac_fields['data'].split('_')[0]
+            if  host_id not in self.hosts:
+                self.log_delay_int.update({host_id:Log(self.OUT_PATH+'/delay_int_e_'+host_id,50)})
+                self.hosts.append(host_id)
+            self.log_delay_int[host_id].save(content_name, chunk_num,int_pac_fields['data'])
+#            self.log_delay_int.save(content_name, chunk_num,int_pac_fields['data'])
+#            self.log_sh.save(int_pac_fields['content_name'], int_pac_fields['chunk_num'], 'before sending data:'+str(time.time()));
+            sendp(packet,iface=self.SH_OUT_FACE,verbose=False)
+#            self.log_sh.save(int_pac_fields['content_name'], int_pac_fields['chunk_num'], 'after sending data:'+str(time.time()));
         else:
+            self.log_sh.save(int_pac_fields['content_name'], int_pac_fields['chunk_num'], 'before adding to pit:'+str(time.time()));
             if self.pit.add(content_name, chunk_num, LIFETIME, int_pac_fields['in_port'])<0:
                 #send interest
-                sendp(int_packet, iface=self.SH_OUT_FACE) 
+#                print ("forward interest")
+                self.log_sh.save(int_pac_fields['content_name'], int_pac_fields['chunk_num'], 'before forwarding interest:'+str(time.time()));
+                sendp(int_packet, iface=self.SH_OUT_FACE,verbose=False) 
+                self.log_sh.save(int_pac_fields['content_name'], int_pac_fields['chunk_num'], 'after forwarding interest:'+str(time.time()));
+#        self.log_sh.save(int_pac_fields['content_name'], int_pac_fields['chunk_num'], 'after sevice interest:'+str(time.time()));
         #self.elog.save(int_pac_fields['content_name'],int_pac_fields['chunk_num'])
     
     def service_data(self,data_packet, data_pac_fields, eth_src, eth_dst):
@@ -191,14 +212,16 @@ class Service_Host(object):
                 #print('forward data to face ', face)
                 data_packet[IP].tos = face
                 #self.log_delay_data.save(data_pac_fields['content_name'], data_pac_fields['chunk_num'])
-                sendp(data_packet, iface=self.SH_OUT_FACE)
+                sendp(data_packet, iface=self.SH_OUT_FACE,verbose=False)
         
    
-    def service_packet_thread(self, packet):
+    def service_packet_thread(self, packet, entranceTime):
+#        packet, entranceTime = args[0], args[1]
         self.sniffed_num = self.sniffed_num + 1
         eth_src = packet[Ether].src
         eth_dst = packet[Ether].dst
         ndn_pack_fields = self.decode_packet(packet)
+#        self.log_sh.save(ndn_pack_fields['content_name'], ndn_pack_fields['chunk_num'],'entranceTime:'+str(entranceTime)+ 'after decode:'+ str(time.time()));
         #self.slog.save(ndn_pack_fields['content_name'], ndn_pack_fields['chunk_num'])
         if ndn_pack_fields['proto'] == self.INT_PROTO:
             #print('int time for', ndn_pack_fields['chunk_num'],':',time.time())
@@ -206,7 +229,7 @@ class Service_Host(object):
         elif ndn_pack_fields['proto'] == self.DATA_PROTO:
             #print(time.time())
             self.service_data(packet, ndn_pack_fields, eth_src,eth_dst)
-        self.q_task.task_done()
+#        self.q_task.task_done()
             
     def service_packet(self,packet):
         """
@@ -215,8 +238,9 @@ class Service_Host(object):
         :return: None
         """
         if packet.haslayer(IP):
-            if self.q_task.full() is not True:
-                self.q_task.put(threading.Thread(target=self.service_packet_thread, args=(packet,)))
+            self.q_task.apply_async(self.service_packet_thread,args=(packet,time.time(),))
+            #if self.q_task.full() is not True:
+#                self.q_task.put(threading.Thread(target=self.service_packet_thread, args=(packet,time.time())))
             
                 
     def send_register_packet(self, content_name):
@@ -232,7 +256,7 @@ class Service_Host(object):
         packet = ether / mpls / ip / data
         
         #packet.show()
-        sendp(packet)
+        sendp(packet,verbose=False)
                 
     def name2label(self, name):
         label = hashlib.sha256()
@@ -270,27 +294,35 @@ class Service_Host(object):
 
 if __name__ == '__main__':
     parser = OptionParser()
-    parser.add_option("-p", "--path",
-                      dest="path",
+    parser.add_option("-r", "--rpath",
+                      dest="rpath",
                       help="repository complete path")
     parser.add_option("-i", "--s_id",
                       dest="s_id",
                       help="switch id")
     parser.add_option("-e", "--experiment", dest="exp",
                       help="experiment name")
-    
+    parser.add_option("-p", "--protocol", dest="protocol",
+                      help="protocol (icn/noicn)")
+    parser.add_option("-s", "--sample", dest="smpl",
+                      help="sample name")
+                      
     (options, args) = parser.parse_args()
     s_id = options.s_id
-    exp = (options.exp) if options.exp else 'topo_0'
+    exp = (options.exp) if options.exp else 'free'
+    protocol = (options.protocol) if options.protocol else 'icn'
+    smpl = (options.smpl) if options.smpl else '1'
+    print('*********************' + exp)
 
+  
     if len(args)>0 and args[0]=='repo':
         #print(options.path)
-        sh = Service_Host(exp,s_id,options.path)
+        sh = Service_Host(protocol, exp, smpl, s_id,options.rpath)
         BUFFER_SIZE = 2048
         t = Thread(target=sh.repo, args=(sh.REPO_PORT,sh.REPO_PATH))
         t.start()
     else:
-        sh = Service_Host(exp,s_id)
-        
+        sh = Service_Host(protocol, exp, smpl, s_id)
     sniff( iface=sh.SH_IN_FACE, prn=lambda x: sh.service_packet(x))#,lfilter=lambda x: eth_src in x.summary())
+    sh.q_task.join()
     

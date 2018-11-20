@@ -35,9 +35,9 @@ class CS(object):
         
     def __init__(self, s_id, repo_path=None, chunk_size=None,eth_src=None,ip_src=None):
         if repo_path==None:
-            self.MAX_STORAGE_SIZE = 2000
+            self.MAX_STORAGE_SIZE = 1000
         else:
-            self.MAX_STORAGE_SIZE = 50000
+            self.MAX_STORAGE_SIZE = 3000
         #self.logfile=open('./Out/SH_log_'+ip_src,'w')
         self.hit_num = 0
         if repo_path is not None:
@@ -49,10 +49,11 @@ class CS(object):
             self.repo_path = None
         self.storage = defaultdict(str)     #represents content store: {'content_name':'chunk_num':data_chunk}
         self.storage_free = self.MAX_STORAGE_SIZE   #size of free storage in cache
+#        print("Storage size: ", self.storage_free)
         #self.storage = list()  #each element of this list is a chunk of a data
         self.lru = defaultdict(int)      #tm value for each content key
         self.tm = 0
-        self.replacement_lock = threading.Lock()
+        self.storage_lock = threading.Lock()
 #        self.slog=Log('start_'+str(s_id),2)
 #        self.elog=Log('end_'+str(s_id),2)
     
@@ -67,29 +68,32 @@ class CS(object):
                    
         key = content_name+':' + str(chunk_num)
         #print('key',key)
-        if key in self.storage and len(self.storage[key])>0:
+        self.storage_lock.acquire() 
+#        print ("looking ", key, "in ", self.storage.keys())
+        if key in self.storage:# and len(self.storage[key])>0:
             self.hit_num += 1
             self.lru[key] = self.tm
             self.tm += 1
-            #print("Hit in cache for ", self.hit_num , ' times', file=self.logfile)
-            return self.storage[key]
+#            print("Hit in cache for ", key )
+            data = self.storage[key]
+            self.storage_lock.release()
+            return data
         if self.repo_path is None:
+            self.storage_lock.release()
             return None
+        self.storage_lock.release()
         label = name2label(content_name)
-        #print("requested content label: ",label, chunk_num, content_name)
+#        print("requested content label: ",label, chunk_num, content_name)
         file_path = self.repo_path+'/'+ label
         if os.path.exists(file_path):
-            #print('content is available in the repo')
+#            print('content is available in the repo')
             f = open(file_path, 'r')
+            f.seek(chunk_num*self.chunk_size)
             chunk = f.read(self.chunk_size)
-            ch_num = 1
             name_bytes = encode_in_2bytes(content_name)
-            while chunk:   
-                data = name_bytes + encode_in_2bytes(str(ch_num))+chunk.encode('utf-8')
-                self.add(content_name,ch_num,data.decode())
-                chunk = f.read(self.chunk_size)
-                ch_num = ch_num + 1
-            return self.storage[key]
+            data = (name_bytes + encode_in_2bytes(str(chunk_num))+chunk.encode('utf-8')).decode()
+            self.add(content_name,chunk_num,data)
+            return data
         return None
     
     def add(self,content_name,chunk_num,data):
@@ -102,17 +106,22 @@ class CS(object):
         """
         datac = deepcopy(data)
         key = content_name + ':' + str(chunk_num)
-        with self.replacement_lock:
-            if self.storage_free==0:
-                #print('Replacement in cache')                   #replace with LRU cache replacement policy 
-                old_key = min(self.lru, key=lambda k:self.lru[k])
-                self.lru.pop(old_key)
-                self.storage.pop(old_key)
-            else:    
-                self.storage_free -= 1
-            self.storage[key]=datac
-            self.lru[key]=self.tm
-            self.tm += 1
+        self.storage_lock.acquire()
+        if key in self.storage:
+            self.storage_lock.release()
+            return
+#        print ("add to storage: ", key)    
+        if self.storage_free==0:
+#            print('Replacement in cache')                   #replace with LRU cache replacement policy 
+            old_key = min(self.lru, key=lambda k:self.lru[k])
+            self.lru.pop(old_key)
+            self.storage.pop(old_key)
+        else:    
+            self.storage_free -= 1
+        self.storage_lock.release()           
+        self.storage[key]=datac
+        self.lru[key]=self.tm
+        self.tm += 1
         
         #print('data have been added to the cache: ', key)
         
@@ -123,9 +132,9 @@ class PIT(object):
         self.droped_int = 0
         self.satisfied_int = 0
         self.id = str(s_id)
-        self.OUT_PATH = './Out/'+exp+'/'
-        self.logfile=open(self.OUT_PATH+'SH_log_'+self.id,'w') 
-        self.logfile.close()
+        #self.OUT_PATH = './Out/'+exp+'/'
+        #self.logfile=open(self.OUT_PATH+'SH_log_'+self.id,'w') 
+        #self.logfile.close()
         self.timeout_num = 0
        
         
@@ -149,26 +158,29 @@ class PIT(object):
         key = content_name + ':' + str(chunk_num)
         timeout = time.time() + lifetime
         timer = Timer(lifetime, self.timeout_callback,args=(key,in_port,))
-        self.table_lock.acquire()
+        self.table_lock.acquire()        
         if key in self.table:
             if in_port in self.table[key]:
                 #print("update pit table for key ",key)
                 if self.table[key][in_port][0]<timeout:
                     #update timeout
                     self.table[key][in_port][1].cancel()
-                    timer.start()
-                    self.table[key].update({in_port:[timeout,timer]})
+                    self.table[key][in_port]=[timeout,timer];
+                    self.table[key][in_port][1].start()
+                    #self.table[key].update({in_port:[timeout,timer]})
                 else:
-                    timer.start()
                     #print("update pit table for new port for key ",key)
-                    self.table[key].update({in_port:[timeout,timer]})
+                    self.table[key].update[in_port]=[timeout,timer]
+                    self.table[key][in_port][1].start()
+                    #self.table[key].update({in_port:[timeout,timer]})
                 self.table_lock.release()
                 return 0
         else:
             #print("update pit table for new key and new port for key ",key)
-            timer.start()
-            self.table.update({key:dict({in_port:[timeout,timer]})})
-        self.table_lock.release()
+            self.table[key]=dict({in_port:[timeout,timer]})
+            self.table[key][in_port][1].start()
+            #self.table.update({key:dict({in_port:[timeout,timer]})})
+            self.table_lock.release()
         return -1
         
         
