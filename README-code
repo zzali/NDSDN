@@ -1,15 +1,19 @@
 # summary of the main files
 
+execute_experiment.sh: A shell experimnet to automating execution of some sample experiments
+
+---------------------------------------------
+
 gen_requests.py: generate request files for the consumers
 
 ---------------------------------------------
 
-topology.py: topology of the emulated net
+mn_network.py: the emulated network topology
 
------------------------------------------
+---------------------------------------------
 VICN.py: the main controller module which the ICN protocols are implemented in. 
 
------------------------------------------
+---------------------------------------------
 ServiceHost.py: 
     the PIT and cache module
     should be executed on the hosts connected to the swtches.
@@ -29,7 +33,4 @@ producer.py:   python3 producer.py -p $content_files_path -r $file_name_of_publi
     should be executed on the hosts
 
 -----------------------------------------
-results.py:
-
------------------------------------------
-draw.py
+draw.py : It is used for representing the results by drawing the diagrams.
