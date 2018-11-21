@@ -1,10 +1,10 @@
 protocol=$1
 delay_sh=$2
 delay_sw=$3
-#smpl=$4
+smpl_num=$4
 exp='ds'$delay_sw'_dsh'$delay_sh
 
-for smpl in `seq 1 20`;
+for smpl in `seq 1 $smpl_num`;
 do
 	if [ ! -d "./Out/"$protocol"/"$exp'/'$smpl'/' ]; then	
 		mkdir -p "./Out/"$protocol"/"$exp'/'$smpl'/'

@@ -40,6 +40,7 @@ The required steps for executing a sample experiment are described at the follow
    -sudo ovs-ofctl -O OpenFlow14  dump-flows s1
 
 8- using draw.py, you can see the diagrams:
+
    #./python draw.py -i consumer_ids -e experiment_name -s sample_num
  
    Ex.: ./python draw.py -i 1,2 -e ds50ms_dsh1ms -s 20
