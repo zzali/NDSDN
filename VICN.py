@@ -82,8 +82,9 @@ class ICSDNController(app_manager.RyuApp):
 #        CONF.register_opts([
 #            cfg.StrOpt('experimnet', default='ds100ms__dsh_1ms', help = ('The experiment by the parameters'))], group='NETPARAM')
         print (CONF.netparam.exp)
-        self.log_file='./Out/' + CONF.netparam.protocol +  '/' + CONF.netparam.exp + '/' + CONF.netparam.smpl + '/controller_log'
-                
+        self.log_file='./Out/' + CONF.netparam.protocol +  '/' + CONF.netparam.exp + '/' + CONF.netparam.smpl 
+        if os.path.exists(self.log_file) is not True:
+            os.makedirs(self.log_file)
         self.switches = []
         self.links = []
         self.mac_to_port = {}
@@ -115,14 +116,14 @@ class ICSDNController(app_manager.RyuApp):
 
     def packet_in_rate(self):
         T = float(10)
-        f = open(self.log_file,'w')
+        f = open(self.log_file+'/controller_log','w')
         f.close()
         pre_num = 0
         while (True):
             time.sleep(T)
             rate = (self.packet_in_num - pre_num)/T
             pre_num = self.packet_in_num
-            f = open(self.log_file,'a')
+            f = open(self.log_file+'/controller_log','a')
             print(rate,file=f)
             f.close()
             
